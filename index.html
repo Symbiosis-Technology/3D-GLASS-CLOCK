@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0b1020">
+<title>3D GLASS CLOCK</title>
+<style>
+:root{
+  --gc:255,255,255;      /* 玻璃颜色 rgb */
+  --ga:.13;              /* 玻璃不透明度 */
+  --tc:#ffffff;          /* 字体颜色 */
+  --ac:#7ef0ff;          /* 强调色 */
+  --blur:16px;
+  --sat:150%;
+  --radius:28px;
+  --noise:.10;
+  --seam:1px solid rgba(255,255,255,.30);
+  --seamline:0;
+  --glow:0 22px 60px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.35);
+  --fs:1;
+  --depth:1;
+  --mx:50%; --my:20%;
+  --bg1:#111a2e; --bg2:#0a0d18;
+  --o1:#4f7cff; --o2:#ff5fa2; --o3:#25e6c8;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0;overflow:hidden}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC","Microsoft YaHei",sans-serif;
+  background:linear-gradient(160deg,var(--bg1),var(--bg2));
+  color:var(--tc);
+  display:flex;flex-direction:column;
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  transition:background .6s ease;
+}
+/* ---------- 背景光球（玻璃的模糊源） ---------- */
+.orbs{position:fixed;inset:-20%;z-index:0;filter:blur(30px);opacity:.85;pointer-events:none}
+.orb{position:absolute;border-radius:50%;mix-blend-mode:screen;animation:float 18s ease-in-out infinite}
+.orb.a{width:52vmax;height:52vmax;left:-12%;top:-8%;background:radial-gradient(circle at 35% 35%,var(--o1),transparent 65%)}
+.orb.b{width:46vmax;height:46vmax;right:-10%;top:18%;background:radial-gradient(circle at 60% 40%,var(--o2),transparent 65%);animation-delay:-6s}
+.orb.c{width:40vmax;height:40vmax;left:20%;bottom:-14%;background:radial-gradient(circle at 50% 50%,var(--o3),transparent 62%);animation-delay:-11s}
+@keyframes float{
+  0%,100%{transform:translate3d(0,0,0) scale(1)}
+  33%{transform:translate3d(6vw,-4vh,0) scale(1.12)}
+  66%{transform:translate3d(-5vw,5vh,0) scale(.92)}
+}
+.grid{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.35;
+  background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);
+  background-size:44px 44px;mask-image:radial-gradient(ellipse at 50% 40%,#000 30%,transparent 78%)}
+
+/* ---------- 顶栏 ---------- */
+.topbar{position:relative;z-index:3;display:flex;align-items:center;gap:10px;
+  padding:14px 16px 6px}
+.brand{font-size:13px;letter-spacing:.22em;opacity:.75;text-transform:uppercase;font-weight:600}
+.spacer{flex:1}
+.iconbtn{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;border:none;
+  background:rgba(255,255,255,.10);color:var(--tc);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid rgba(255,255,255,.18);transition:transform .18s,background .2s}
+.iconbtn:active{transform:scale(.9)}
+.iconbtn.on{background:var(--ac);color:#08131a;box-shadow:0 0 18px color-mix(in srgb,var(--ac) 60%,transparent)}
+.iconbtn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- 3D 舞台 ---------- */
+.stage{position:relative;z-index:2;flex:1;display:grid;place-items:center;padding:6px 18px 10px;
+  perspective:900px;perspective-origin:50% 45%}
+.tilt{transform-style:preserve-3d;will-change:transform;
+  transform:rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg))}
+.glass{
+  position:relative;width:min(88vw,380px);min-height:330px;border-radius:var(--radius);
+  background:rgba(var(--gc),var(--ga));
+  backdrop-filter:blur(var(--blur)) saturate(var(--sat));
+  -webkit-backdrop-filter:blur(var(--blur)) saturate(var(--sat));
+  border:var(--seam);
+  box-shadow:var(--glow);
+  overflow:hidden;transition:border-radius .4s,background .3s,box-shadow .3s,border .3s;
+}
+/* 噪点 */
+.glass .noise{position:absolute;inset:0;pointer-events:none;opacity:var(--noise);border-radius:inherit;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='.55'/></svg>");
+  background-size:140px 140px;mix-blend-mode:overlay}
+/* 高光 */
+.glass .glare{position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+  background:radial-gradient(420px circle at var(--mx) var(--my),rgba(255,255,255,.28),rgba(255,255,255,.05) 45%,transparent 70%);
+  transition:background .12s linear}
+.glass .edge{position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.10),inset 0 -30px 60px -30px rgba(0,0,0,.35)}
+/* 拼接缝（有缝玻璃） */
+.glass .seams{position:absolute;inset:0;pointer-events:none;opacity:var(--seamline);border-radius:inherit;
+  background:
+    linear-gradient(to bottom,transparent calc(50% - .5px),rgba(255,255,255,.55) calc(50% - .5px),rgba(255,255,255,.55) calc(50% + .5px),transparent calc(50% + .5px)),
+    linear-gradient(to right,transparent calc(50% - .5px),rgba(255,255,255,.35) calc(50% - .5px),rgba(255,255,255,.35) calc(50% + .5px),transparent calc(50% + .5px));
+  mix-blend-mode:screen}
+
+.content{position:relative;display:grid;padding:22px 20px;transform-style:preserve-3d}
+.face{grid-area:1/1;display:flex;flex-direction:column;justify-content:center;gap:14px;
+  transform-style:preserve-3d;backface-visibility:hidden;
+  transition:transform .55s cubic-bezier(.2,.85,.25,1),opacity .45s ease;
+  transform:rotateY(88deg);opacity:0;pointer-events:none}
+.face.active{transform:rotateY(0deg);opacity:1;pointer-events:auto}
+.face.out{transform:rotateY(-88deg);opacity:0}
+.l1{transform:translateZ(calc(26px * var(--depth)))}
+.l2{transform:translateZ(calc(14px * var(--depth)))}
+.l3{transform:translateZ(calc(6px * var(--depth)))}
+
+/* ---------- 时钟 ---------- */
+.clock-time{display:flex;align-items:baseline;justify-content:center;line-height:.92;
+  font-size:calc(62px * var(--fs));font-weight:200;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;text-shadow:0 2px 18px rgba(0,0,0,.35)}
+.clock-time .sec{font-size:.42em;opacity:.75;margin-left:2px;transform:translateY(-.35em)}
+.clock-time .ampm{font-size:.26em;opacity:.7;margin-left:6px;letter-spacing:.1em}
+.clock-date{text-align:center;font-size:14px;opacity:.78;letter-spacing:.08em}
+.clock-ms{text-align:center;font-size:11px;opacity:.45;letter-spacing:.2em}
+.ring{display:grid;place-items:center;margin:2px auto 0}
+.ring svg{width:74px;height:74px;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:4;stroke-linecap:round}
+.ring .bg{stroke:rgba(255,255,255,.16)}
+.ring .fg{stroke:var(--ac);transition:stroke-dashoffset .2s linear;filter:drop-shadow(0 0 6px var(--ac))}
+
+/* ---------- 秒表 / 计时器 ---------- */
+.big{text-align:center;font-size:calc(44px * var(--fs));font-weight:250;font-variant-numeric:tabular-nums;
+  line-height:1;text-shadow:0 2px 16px rgba(0,0,0,.3)}
+.big .ms{font-size:.42em;opacity:.7}
+.laps{margin:0;padding:0;list-style:none;max-height:118px;overflow:auto;-webkit-overflow-scrolling:touch}
+.laps li{display:flex;justify-content:space-between;padding:7px 2px;font-size:13px;
+  border-bottom:1px solid rgba(255,255,255,.10);font-variant-numeric:tabular-nums}
+.laps li span:first-child{opacity:.6}
+.divider{height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.34),transparent);margin:2px 0}
+.glass.seamless .divider{opacity:0}
+.glass.seamed .divider{height:1px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent)}
+
+.btns{display:flex;gap:10px;justify-content:center}
+.btn{flex:1;min-height:44px;border-radius:16px;border:1px solid rgba(255,255,255,.22);
+  background:rgba(255,255,255,.08);color:var(--tc);font-size:15px;font-weight:600;letter-spacing:.04em;
+  transition:transform .15s,background .2s,box-shadow .2s;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.btn:active{transform:scale(.94)}
+.btn.primary{background:color-mix(in srgb,var(--ac) 30%,transparent);border-color:color-mix(in srgb,var(--ac) 65%,transparent);
+  box-shadow:0 6px 22px -8px var(--ac)}
+.btn.danger{background:rgba(255,90,90,.18);border-color:rgba(255,120,120,.5)}
+.btn:disabled{opacity:.35}
+
+.tm-inputs{display:flex;gap:8px;justify-content:center}
+.tm-field{display:flex;flex-direction:column;align-items:center;gap:4px}
+.tm-field input{width:66px;height:52px;border-radius:14px;text-align:center;font-size:24px;font-weight:300;
+  background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.20);color:var(--tc);
+  font-variant-numeric:tabular-nums;-moz-appearance:textfield}
+.tm-field input::-webkit-outer-spin-button,.tm-field input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.tm-field label{font-size:10px;opacity:.6;letter-spacing:.1em}
+.chips{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.chip{padding:7px 14px;border-radius:999px;font-size:12px;border:1px solid rgba(255,255,255,.22);
+  background:rgba(255,255,255,.06)}
+.chip.on{background:color-mix(in srgb,var(--ac) 32%,transparent);border-color:var(--ac)}
+.progress{height:5px;border-radius:99px;background:rgba(255,255,255,.14);overflow:hidden}
+.progress i{display:block;height:100%;width:0;background:var(--ac);border-radius:99px;
+  box-shadow:0 0 12px var(--ac);transition:width .25s linear}
+.done{animation:flash .9s ease-in-out infinite}
+@keyframes flash{0%,100%{opacity:1}50%{opacity:.35}}
+
+/* ---------- 底部标签 ---------- */
+.tabs{position:relative;z-index:3;display:flex;gap:8px;padding:6px 16px calc(14px + env(safe-area-inset-bottom))}
+.tab{flex:1;height:46px;border-radius:16px;border:1px solid rgba(255,255,255,.16);
+  background:rgba(255,255,255,.07);color:var(--tc);font-size:13px;font-weight:600;letter-spacing:.08em;
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:.25s}
+.tab.on{background:color-mix(in srgb,var(--ac) 26%,transparent);border-color:color-mix(in srgb,var(--ac) 60%,transparent);
+  box-shadow:0 8px 24px -12px var(--ac)}
+
+/* ---------- 设置抽屉 ---------- */
+.mask{position:fixed;inset:0;z-index:8;background:rgba(0,0,0,.45);backdrop-filter:blur(3px);
+  opacity:0;pointer-events:none;transition:.3s}
+.mask.show{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:9;max-height:82vh;overflow:auto;
+  padding:8px 18px calc(24px + env(safe-area-inset-bottom));
+  border-radius:26px 26px 0 0;transform:translateY(102%);transition:transform .38s cubic-bezier(.2,.9,.25,1);
+  background:rgba(var(--gc),calc(var(--ga) + .35));
+  backdrop-filter:blur(calc(var(--blur) + 10px)) saturate(var(--sat));
+  -webkit-backdrop-filter:blur(calc(var(--blur) + 10px)) saturate(var(--sat));
+  border-top:1px solid rgba(255,255,255,.28);box-shadow:0 -20px 60px rgba(0,0,0,.5)}
+.sheet.show{transform:translateY(0)}
+.sheet h2{margin:6px 0 14px;font-size:16px;font-weight:600;letter-spacing:.1em;text-align:center}
+.grab{width:44px;height:4px;border-radius:99px;background:rgba(255,255,255,.35);margin:6px auto 4px}
+.group{margin-bottom:18px}
+.gt{font-size:11px;letter-spacing:.18em;opacity:.65;margin-bottom:9px;text-transform:uppercase}
+.row{display:flex;align-items:center;gap:12px;margin-bottom:10px;font-size:13px}
+.row label{flex:1;opacity:.9}
+.row .val{width:44px;text-align:right;font-size:12px;opacity:.7;font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;appearance:none;flex:2;height:4px;border-radius:99px;
+  background:rgba(255,255,255,.22);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;
+  background:var(--ac);box-shadow:0 0 12px var(--ac);border:none}
+input[type=range]::-moz-range-thumb{width:20px;height:20px;border:none;border-radius:50%;background:var(--ac)}
+input[type=color]{width:46px;height:32px;border:none;border-radius:10px;background:none;padding:0}
+input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+input[type=color]::-webkit-color-swatch{border:1px solid rgba(255,255,255,.35);border-radius:10px}
+.sw{position:relative;width:46px;height:27px;flex:none}
+.sw input{opacity:0;width:100%;height:100%;margin:0;position:absolute;z-index:2}
+.sw i{position:absolute;inset:0;border-radius:99px;background:rgba(255,255,255,.20);transition:.25s}
+.sw i::after{content:'';position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;
+  background:#fff;transition:.25s}
+.sw input:checked + i{background:var(--ac)}
+.sw input:checked + i::after{transform:translateX(19px)}
+.mats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.mat{padding:11px 6px;border-radius:14px;font-size:13px;text-align:center;border:1px solid rgba(255,255,255,.22);
+  background:rgba(255,255,255,.06)}
+.mat.on{background:color-mix(in srgb,var(--ac) 32%,transparent);border-color:var(--ac)}
+.bgs{display:flex;gap:10px;flex-wrap:wrap}
+.bgdot{width:42px;height:42px;border-radius:12px;border:1px solid rgba(255,255,255,.28);position:relative}
+.bgdot.on::after{content:'';position:absolute;inset:-4px;border:2px solid var(--ac);border-radius:16px}
+.hint{font-size:11px;opacity:.55;line-height:1.6;margin:8px 2px 0}
+.acts{display:flex;gap:10px;margin-top:6px}
+.acts .btn{font-size:13px}
+.toast{position:fixed;left:50%;top:12%;transform:translate(-50%,-14px);z-index:20;
+  padding:10px 18px;border-radius:14px;font-size:13px;background:rgba(0,0,0,.55);
+  backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.18);
+  opacity:0;transition:.3s;pointer-events:none;text-align:center;max-width:80vw}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<div class="orbs"><div class="orb a"></div><div class="orb b"></div><div class="orb c"></div></div>
+<div class="grid"></div>
+
+<header class="topbar">
+  <div class="brand">3D GLASS CLOCK</div>
+  <div class="spacer"></div>
+  <button class="iconbtn" id="gyroBtn" title="重力感应">
+    <svg viewBox="0 0 24 24"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="4.2"/></svg>
+  </button>
+  <button class="iconbtn" id="setBtn" title="设置">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7.5 19.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.6 1.6 0 0 0 3 13.9H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 7.5l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 10 3.1V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 2.7 1.1l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0 1.1 2.7H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1.3z"/></svg>
+  </button>
+</header>
+
+<main class="stage">
+  <div class="tilt" id="tilt">
+    <div class="glass frosted" id="glass">
+      <div class="noise"></div>
+      <div class="glare"></div>
+      <div class="edge"></div>
+      <div class="seams"></div>
+      <div class="content">
+
+        <!-- 时钟 -->
+        <section class="face active" data-face="clock">
+          <div class="l2 clock-date" id="cDate">—</div>
+          <div class="l1 clock-time" id="cTime">
+            <span id="cHM">00:00</span><span class="sec" id="cSec">:00</span><span class="ampm" id="cAmpm"></span>
+          </div>
+          <div class="ring l3">
+            <svg viewBox="0 0 80 80">
+              <circle class="bg" cx="40" cy="40" r="34"></circle>
+              <circle class="fg" id="cRing" cx="40" cy="40" r="34" stroke-dasharray="213.6" stroke-dashoffset="213.6"></circle>
+            </svg>
+          </div>
+          <div class="clock-ms" id="cWeek">—</div>
+        </section>
+
+        <!-- 秒表 -->
+        <section class="face" data-face="stopwatch">
+          <div class="l1 big" id="swBig"><span id="swMStr">00:00</span><span class="ms">.<span id="swCs">00</span></span></div>
+          <div class="divider"></div>
+          <div class="l3 btns">
+            <button class="btn primary" id="swToggle">开始</button>
+            <button class="btn" id="swLap">计次</button>
+            <button class="btn danger" id="swReset">重置</button>
+          </div>
+          <ul class="laps l2" id="swLaps"></ul>
+        </section>
+
+        <!-- 计时器 -->
+        <section class="face" data-face="timer">
+          <div class="l1 big" id="tmBig">00:00:00</div>
+          <div class="progress l2"><i id="tmBar"></i></div>
+          <div class="tm-inputs l3" id="tmInputs">
+            <div class="tm-field"><input type="number" id="tmH" value="0" min="0" max="99" inputmode="numeric"><label>时</label></div>
+            <div class="tm-field"><input type="number" id="tmM" value="5" min="0" max="59" inputmode="numeric"><label>分</label></div>
+            <div class="tm-field"><input type="number" id="tmS" value="0" min="0" max="59" inputmode="numeric"><label>秒</label></div>
+          </div>
+          <div class="chips l3" id="tmChips">
+            <button class="chip" data-min="1">1 分</button>
+            <button class="chip" data-min="3">3 分</button>
+            <button class="chip" data-min="5">5 分</button>
+            <button class="chip" data-min="10">10 分</button>
+            <button class="chip" data-min="25">25 分</button>
+          </div>
+          <div class="divider"></div>
+          <div class="l3 btns">
+            <button class="btn primary" id="tmToggle">开始</button>
+            <button class="btn" id="tmReset">重置</button>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+</main>
+
+<nav class="tabs">
+  <button class="tab on" data-go="clock">时钟</button>
+  <button class="tab" data-go="stopwatch">秒表</button>
+  <button class="tab" data-go="timer">计时器</button>
+</nav>
+
+<div class="mask" id="mask"></div>
+<section class="sheet" id="sheet">
+  <div class="grab"></div>
+  <h2>外 观 与 功 能</h2>
+
+  <div class="group">
+    <div class="gt">玻璃材质</div>
+    <div class="mats" id="mats">
+      <button class="mat on" data-mat="frosted">磨砂玻璃</button>
+      <button class="mat" data-mat="seamless">无缝玻璃</button>
+      <button class="mat" data-mat="seamed">有缝玻璃</button>
+      <button class="mat" data-mat="fuzzy">毛玻璃</button>
+      <button class="mat" data-mat="plain">清玻璃</button>
+    </div>
+    <p class="hint" id="matHint"></p>
+  </div>
+
+  <div class="group">
+    <div class="gt">玻璃颜色</div>
+    <div class="row"><label>色调</label><input type="color" id="gColor" value="#ffffff"><span class="val" id="gColorVal"></span></div>
+    <div class="row"><label>浓度</label><input type="range" id="gAlpha" min="0" max="70" value="13"><span class="val" id="gAlphaVal"></span></div>
+    <div class="row"><label>模糊</label><input type="range" id="gBlur" min="0" max="70" value="16"><span class="val" id="gBlurVal"></span></div>
+    <div class="row"><label>鲜映度</label><input type="range" id="gSat" min="80" max="260" value="150"><span class="val" id="gSatVal"></span></div>
+    <div class="row"><label>噪点</label><input type="range" id="gNoise" min="0" max="40" value="10"><span class="val" id="gNoiseVal"></span></div>
+    <div class="row"><label>圆角</label><input type="range" id="gRadius" min="0" max="60" value="28"><span class="val" id="gRadiusVal"></span></div>
+  </div>
+
+  <div class="group">
+    <div class="gt">文字与强调色</div>
+    <div class="row"><label>字体颜色</label><input type="color" id="tColor" value="#ffffff"><span class="val" id="tColorVal"></span></div>
+    <div class="row"><label>强调色</label><input type="color" id="aColor" value="#7ef0ff"><span class="val" id="aColorVal"></span></div>
+    <div class="row"><label>字号</label><input type="range" id="fScale" min="70" max="150" value="100"><span class="val" id="fScaleVal"></span></div>
+  </div>
+
+  <div class="group">
+    <div class="gt">3D 动效</div>
+    <div class="row"><label>倾斜幅度</label><input type="range" id="tiltAmt" min="0" max="200" value="100"><span class="val" id="tiltVal"></span></div>
+    <div class="row"><label>视差深度</label><input type="range" id="depthAmt" min="0" max="200" value="100"><span class="val" id="depthVal"></span></div>
+    <div class="row"><label>手机重力感应</label><span class="sw"><input type="checkbox" id="gyroSw"><i></i></span></div>
+    <div class="row"><label>自动摆动（无传感器时）</label><span class="sw"><input type="checkbox" id="demoSw"><i></i></span></div>
+    <div class="row"><label>重力灵敏度</label><input type="range" id="gSens" min="40" max="240" value="130"><span class="val" id="gSensVal"></span></div>
+    <div class="row"><label>反向跟随</label><span class="sw"><input type="checkbox" id="invSw"><i></i></span></div>
+    <div class="row"><label>按当前姿态归零</label><button class="chip" id="recalBtn">校准</button></div>
+    <p class="hint">开启后第一帧会作为水平基准，画面回正；之后转动手机卡片实时跟随。躺着/斜着用时点「校准」即可重新定基准。</p>
+  </div>
+
+  <div class="group">
+    <div class="gt">时钟格式</div>
+    <div class="row"><label>24 小时制</label><span class="sw"><input type="checkbox" id="h24" checked><i></i></span></div>
+    <div class="row"><label>显示秒</label><span class="sw"><input type="checkbox" id="showSec" checked><i></i></span></div>
+  </div>
+
+  <div class="group">
+    <div class="gt">背景光效</div>
+    <div class="bgs" id="bgs"></div>
+  </div>
+
+  <div class="acts">
+    <button class="btn" id="randBtn">随机配色</button>
+    <button class="btn" id="resetBtn">恢复默认</button>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const root = document.documentElement;
+const clamp = (v,a,b) => Math.min(b,Math.max(a,v));
+const pad = (n,l) => String(Math.floor(n)).padStart(l||2,'0');
+
+/* ============ 材质预设 ============ */
+const MATS = {
+  frosted :{blur:20,sat:170,radius:28,noise:14,seam:'1px solid rgba(255,255,255,.34)',seamline:0,
+            glow:'0 22px 60px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.42)',hint:'均匀细腻的雾面，边缘柔和带高光，最百搭。'},
+  seamless:{blur:12,sat:150,radius:46,noise:6, seam:'none',                     seamline:0,
+            glow:'0 30px 70px rgba(0,0,0,.35)',hint:'一整块无边框无边缝的圆润玻璃，内部没有分割线。'},
+  seamed  :{blur:8, sat:125,radius:14,noise:3, seam:'1px solid rgba(255,255,255,.55)',seamline:1,
+            glow:'0 18px 50px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.18)',hint:'由多块玻璃拼接，可见十字缝线与硬朗边框。'},
+  fuzzy   :{blur:46,sat:115,radius:32,noise:26,seam:'1px solid rgba(255,255,255,.16)',seamline:0,
+            glow:'0 26px 80px rgba(0,0,0,.4)',hint:'超强散射的毛面，只透出朦胧色块，颗粒感最重。'},
+  plain   :{blur:6, sat:135,radius:24,noise:4, seam:'1px solid rgba(255,255,255,.26)',seamline:0,
+            glow:'0 14px 40px rgba(0,0,0,.35)',hint:'通透清玻璃，模糊极轻，几乎看得清背后。'}
+};
+const BGS = [
+  {n:'极光',b1:'#111a2e',b2:'#0a0d18',o:['#4f7cff','#ff5fa2','#25e6c8']},
+  {n:'暮色',b1:'#3a1c46',b2:'#120a1e',o:['#ff7a5c','#c05cff','#ff4d8d']},
+  {n:'深海',b1:'#062b3d',b2:'#04121c',o:['#00c2ff','#0affc2','#0066ff']},
+  {n:'霓虹',b1:'#1a0033',b2:'#05010f',o:['#ff00e0','#00e5ff','#7cff00']},
+  {n:'暖沙',b1:'#3d2a17',b2:'#150e08',o:['#ffb457','#ff7b54','#ffe08a']},
+  {n:'灰岩',b1:'#2a2d33',b2:'#0d0f12',o:['#8f9bb3','#c8ccd4','#5b6472']}
+];
+const DEFAULTS = {mat:'frosted',gc:'#ffffff',ga:13,blur:16,sat:150,noise:10,radius:28,
+  tc:'#ffffff',ac:'#7ef0ff',fs:100,tilt:100,depth:100,h24:true,showSec:true,bg:0,sens:130,inv:false};
+
+const S = Object.assign({}, DEFAULTS, load());
+function load(){ try{ return JSON.parse(localStorage.getItem('glass3d')||'{}'); }catch(e){ return {}; } }
+function save(){ try{ localStorage.setItem('glass3d', JSON.stringify(S)); }catch(e){} }
+
+function hex2rgb(h){ h=h.replace('#',''); if(h.length===3) h=h.split('').map(c=>c+c).join('');
+  return [parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]; }
+
+/* ============ 应用外观 ============ */
+function apply(){
+  const m = MATS[S.mat] || MATS.frosted;
+  root.style.setProperty('--gc', hex2rgb(S.gc).join(','));
+  root.style.setProperty('--ga', (S.ga/100).toFixed(3));
+  root.style.setProperty('--tc', S.tc);
+  root.style.setProperty('--ac', S.ac);
+  root.style.setProperty('--blur', S.blur + 'px');
+  root.style.setProperty('--sat', S.sat+'%');
+  root.style.setProperty('--noise', (S.noise/100).toFixed(2));
+  root.style.setProperty('--radius', S.radius+'px');
+  root.style.setProperty('--seam', m.seam);
+  root.style.setProperty('--seamline', m.seamline);
+  root.style.setProperty('--glow', m.glow);
+  root.style.setProperty('--fs', (S.fs/100).toFixed(2));
+  root.style.setProperty('--depth', (S.depth/100).toFixed(2));
+  glass.className = 'glass ' + S.mat;
+  const b = BGS[S.bg];
+  root.style.setProperty('--bg1', b.b1); root.style.setProperty('--bg2', b.b2);
+  root.style.setProperty('--o1', b.o[0]); root.style.setProperty('--o2', b.o[1]); root.style.setProperty('--o3', b.o[2]);
+  $('#matHint').textContent = m.hint;
+  $('#cSec').style.display = S.showSec ? '' : 'none';
+}
+function applyMat(name){
+  S.mat = name; const m = MATS[name];
+  S.blur = m.blur; S.sat = m.sat; S.noise = m.noise; S.radius = m.radius;
+  syncUI(); apply(); save();
+}
+function syncUI(){
+  $$('#mats .mat').forEach(b => b.classList.toggle('on', b.dataset.mat === S.mat));
+  $('#gColor').value = S.gc; $('#gAlpha').value = S.ga; $('#gBlur').value = S.blur;
+  $('#gSat').value = S.sat;  $('#gNoise').value = S.noise; $('#gRadius').value = S.radius;
+  $('#tColor').value = S.tc; $('#aColor').value = S.ac; $('#fScale').value = S.fs;
+  $('#tiltAmt').value = S.tilt; $('#depthAmt').value = S.depth; $('#gSens').value = S.sens;
+  $('#h24').checked = S.h24; $('#showSec').checked = S.showSec; $('#gyroSw').checked = !!gyroOn;
+  $('#invSw').checked = !!S.inv; $('#demoSw').checked = !!demoOn;
+  $('#gColorVal').textContent = S.gc.toUpperCase();
+  $('#gAlphaVal').textContent = S.ga + '%';
+  $('#gBlurVal').textContent = S.blur + 'px';
+  $('#gSatVal').textContent = S.sat + '%';
+  $('#gNoiseVal').textContent = S.noise + '%';
+  $('#gRadiusVal').textContent = S.radius + 'px';
+  $('#tColorVal').textContent = S.tc.toUpperCase();
+  $('#aColorVal').textContent = S.ac.toUpperCase();
+  $('#fScaleVal').textContent = S.fs + '%';
+  $('#tiltVal').textContent = S.tilt + '%';
+  $('#depthVal').textContent = S.depth + '%';
+  $$('#bgs .bgdot').forEach((d,i) => d.classList.toggle('on', i === S.bg));
+}
+
+/* ============ 3D 倾斜 ============ */
+const tilt = $('#tilt'), glass = $('#glass'), glare = $('.glare');
+let tRx = 0, tRy = 0, cRx = 0, cRy = 0, gyroOn = false;
+let gyroBase = null, gyroGot = false, gyroTimer = null, demoOn = false, demoPh = 0;
+function setTarget(x,y,fromGyro){
+  const k = ((fromGyro ? S.sens : S.tilt) / 100) * (S.inv ? -1 : 1);
+  tRx = clamp(x*k,-38,38); tRy = clamp(y*k,-38,38);
+}
+/* 无传感器时的降级动效：自动巡航摆动，让 3D 与高光照常可见 */
+function demoStep(){
+  if(!demoOn || gyroOn) return;
+  const k = S.sens/100;
+  demoPh += .009;
+  tRx = Math.sin(demoPh) * 13 * k;
+  tRy = Math.sin(demoPh * .72 + 1.1) * 19 * k;
+  glare.style.setProperty('--mx', (50 + Math.sin(demoPh*.72 + 1.1) * 32) + '%');
+  glare.style.setProperty('--my', (38 + Math.sin(demoPh) * 22) + '%');
+}
+function setDemo(on){
+  demoOn = on; if(on) gyroOn = false;
+  $('#gyroBtn').classList.toggle('on', on);
+  $('#demoSw').checked = on;
+  if(!on){ setTarget(0,0); glare.style.setProperty('--mx','50%'); glare.style.setProperty('--my','20%'); }
+}
+function loop(){
+  demoStep();
+  cRx += (tRx - cRx) * .12; cRy += (tRy - cRy) * .12;
+  tilt.style.setProperty('--rx', cRx.toFixed(2)+'deg');
+  tilt.style.setProperty('--ry', cRy.toFixed(2)+'deg');
+  tick();
+  requestAnimationFrame(loop);
+}
+/* 角度差归一化到 -180~180 */
+function ndiff(a,b){ let d = a-b; while(d>180) d-=360; while(d<-180) d+=360; return d; }
+/* 当前屏幕方向角：0 / 90 / 180 / 270 */
+function scrAngle(){
+  const so = screen.orientation && screen.orientation.angle;
+  return (so == null ? (window.orientation || 0) : so) | 0;
+}
+function onOrient(e){
+  if(!gyroOn) return;
+  if(e.beta == null && e.gamma == null) return;
+  if(!gyroGot){ gyroGot = true; toast('已收到陀螺仪数据，转动手机试试'); }
+  const b = e.beta || 0, g = e.gamma || 0;
+  // 第一帧作为水平基准（此时画面回正），之后全部按相对偏移计算
+  if(!gyroBase){ gyroBase = {b:b, g:g}; return; }
+  const dB = ndiff(b, gyroBase.b);   // 前后倾
+  const dG = ndiff(g, gyroBase.g);   // 左右倾
+  const th = scrAngle(), r = th * Math.PI/180, c = Math.cos(r), s = Math.sin(r);
+  const up    =  dB*c - dG*s;
+  const right =  dB*s + dG*c;
+  setTarget(-up*1.15, right*1.35, true);
+  glare.style.setProperty('--mx', clamp(50 + right*1.1, 0, 100) + '%');
+  glare.style.setProperty('--my', clamp(38 + up*1.1, 0, 100) + '%');
+}
+function onPointer(cx, cy){
+  if(gyroOn || $('#sheet').classList.contains('show')) return;
+  if(demoOn) setDemo(false);   // 手指/鼠标一动就接管自动摆动
+  const r = glass.getBoundingClientRect();
+  const px = (cx - (r.left + r.width/2)) / (r.width/2);
+  const py = (cy - (r.top + r.height/2)) / (r.height/2);
+  setTarget(-py*22, px*26);
+  glare.style.setProperty('--mx', ((px*.5+.5)*100)+'%');
+  glare.style.setProperty('--my', ((py*.5+.5)*100)+'%');
+}
+window.addEventListener('mousemove', e => onPointer(e.clientX, e.clientY));
+document.addEventListener('touchmove', e => { if(e.touches[0]) onPointer(e.touches[0].clientX, e.touches[0].clientY); }, {passive:true});
+document.addEventListener('touchend', () => { if(!gyroOn && !demoOn){ setTarget(0,0); glare.style.setProperty('--mx','50%'); glare.style.setProperty('--my','20%'); } });
+
+function recalibrate(){ gyroBase = null; toast('已按当前姿态归零'); }
+
+/* 环境诊断：为什么拿不到传感器数据 */
+function gyroDiag(){
+  let inFrame = false;
+  try{ inFrame = window.self !== window.top; }catch(e){ inFrame = true; }
+  const secure = window.isSecureContext !== false;
+  const touch  = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  const D = window.DeviceOrientationEvent;
+  if(!D) return '此浏览器没有方向传感器接口（多为桌面浏览器），已切换为自动摆动';
+  if(inFrame) return '当前嵌在预览框架(iframe)里，宿主未授予传感器权限 → 请下载 HTML 用手机 Safari/Chrome 直接打开';
+  if(!touch) return '当前是电脑/预览器，没有陀螺仪硬件 → 已切换为自动摆动';
+  if(typeof D.requestPermission === 'function' && !secure)
+    return 'iOS 要求 HTTPS 安全上下文才允许授权传感器 → 请部署到 https 后打开';
+  return '未收到传感器数据：请关闭系统「方向锁定」，或用 Safari/Chrome 打开（微信内置浏览器常不支持）';
+}
+function enableGyro(){
+  const D = window.DeviceOrientationEvent;
+  if(!D){ setDemo(true); toast(gyroDiag()); return; }
+  const start = () => {
+    gyroOn = true; demoOn = false; gyroBase = null; gyroGot = false;
+    window.addEventListener('deviceorientation', onOrient);
+    $('#gyroBtn').classList.add('on'); $('#gyroSw').checked = true; $('#demoSw').checked = false;
+    clearTimeout(gyroTimer);
+    gyroTimer = setTimeout(() => {
+      if(gyroOn && !gyroGot){ setDemo(true); toast(gyroDiag()); }
+    }, 2200);
+  };
+  if(typeof D.requestPermission === 'function'){
+    D.requestPermission().then(res => {
+      if(res === 'granted') start();
+      else { setDemo(true); toast('未获得传感器权限 → 已切换为自动摆动'); }
+    }).catch(()=> { setDemo(true); toast(gyroDiag()); });
+  }else start();
+}
+function disableGyro(){
+  gyroOn = false; gyroBase = null; clearTimeout(gyroTimer);
+  window.removeEventListener('deviceorientation', onOrient);
+  $('#gyroBtn').classList.remove('on'); $('#gyroSw').checked = false;
+  setTarget(0,0); toast('已关闭重力感应，可手指拖动屏幕倾斜');
+}
+$('#gyroBtn').addEventListener('click', () => (gyroOn || demoOn) ? disableGyro() : enableGyro());
+/* 转屏后基准失效，自动归零 */
+window.addEventListener('orientationchange', () => setTimeout(recalibrate, 350));
+if(screen.orientation && screen.orientation.addEventListener)
+  screen.orientation.addEventListener('change', () => setTimeout(recalibrate, 350));
+
+/* ============ 时钟 ============ */
+const W = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+const ring = $('#cRing'), CIRC = 213.6;
+function tick(){
+  // 时钟
+  const d = new Date();
+  let h = d.getHours(), ap = '';
+  if(!S.h24){ ap = h < 12 ? 'AM' : 'PM'; h = h % 12; if(h === 0) h = 12; }
+  $('#cHM').textContent = pad(h) + ':' + pad(d.getMinutes());
+  $('#cSec').textContent = ':' + pad(d.getSeconds());
+  $('#cAmpm').textContent = ap;
+  $('#cDate').textContent = d.getFullYear() + '年' + (d.getMonth()+1) + '月' + d.getDate() + '日';
+  $('#cWeek').textContent = W[d.getDay()] + ' · ' + (S.h24 ? '24 小时制' : '12 小时制');
+  const sp = d.getSeconds() + d.getMilliseconds()/1000;
+  ring.setAttribute('stroke-dashoffset', (CIRC * (1 - sp/60)).toFixed(1));
+
+  // 秒表
+  if(sw.running){
+    const el = performance.now() - sw.base;
+    renderSW(el);
+  }
+  // 计时器
+  if(tm.running){
+    const left = tm.endAt - Date.now();
+    if(left <= 0){ tm.running = false; tm.left = 0; renderTM(0); finishTM(); }
+    else { tm.left = left; renderTM(left); }
+  }
+}
+
+/* ============ 秒表 ============ */
+const sw = {running:false, base:0, elapsed:0, last:0, laps:[]};
+function renderSW(ms){
+  const t = Math.max(0, ms);
+  const m = Math.floor(t/60000), s = Math.floor(t%60000/1000), cs = Math.floor(t%1000/10);
+  $('#swMStr').textContent = pad(m) + ':' + pad(s);
+  $('#swCs').textContent = pad(cs);
+}
+$('#swToggle').addEventListener('click', () => {
+  if(sw.running){
+    sw.elapsed = performance.now() - sw.base; sw.running = false;
+    $('#swToggle').textContent = '继续'; $('#swLap').textContent = '计次';
+  }else{
+    sw.base = performance.now() - sw.elapsed; sw.running = true; sw.last = 0;
+    $('#swToggle').textContent = '停止'; $('#swLap').textContent = '计次';
+  }
+  $('#swToggle').classList.toggle('primary', !sw.running);
+});
+$('#swLap').addEventListener('click', () => {
+  if(!sw.running) return;
+  const now = performance.now() - sw.base;
+  sw.laps.unshift(now - sw.last); sw.last = now;
+  renderLaps();
+  if(navigator.vibrate) navigator.vibrate(12);
+});
+$('#swReset').addEventListener('click', () => {
+  sw.running = false; sw.elapsed = 0; sw.base = performance.now(); sw.last = 0; sw.laps = [];
+  renderSW(0); renderLaps();
+  $('#swToggle').textContent = '开始'; $('#swToggle').classList.add('primary');
+});
+function fmtLap(ms){
+  const m = Math.floor(ms/60000), s = Math.floor(ms%60000/1000), cs = Math.floor(ms%1000/10);
+  return (m? pad(m)+':':'') + pad(s) + '.' + pad(cs);
+}
+function renderLaps(){
+  const ul = $('#swLaps'); ul.innerHTML = '';
+  sw.laps.forEach((v,i) => {
+    const li = document.createElement('li');
+    li.innerHTML = '<span>计次 ' + (sw.laps.length - i) + '</span><span>' + fmtLap(v) + '</span>';
+    ul.appendChild(li);
+  });
+}
+
+/* ============ 计时器 ============ */
+const tm = {running:false, total:0, left:0, endAt:0};
+function tmFromInputs(){
+  const h = +$('#tmH').value || 0, m = +$('#tmM').value || 0, s = +$('#tmS').value || 0;
+  return (h*3600 + m*60 + s) * 1000;
+}
+function renderTM(left){
+  const t = Math.max(0, left);
+  const h = Math.floor(t/3600000), m = Math.floor(t%3600000/60000), s = Math.floor(t%60000/1000);
+  $('#tmBig').textContent = pad(h) + ':' + pad(m) + ':' + pad(s);
+  const p = tm.total ? t/tm.total : 0;
+  $('#tmBar').style.width = (p*100).toFixed(2) + '%';
+  $('#tmBig').classList.toggle('done', t <= 0 && tm.total > 0);
+}
+function setEditable(on){
+  $$('#tmInputs input').forEach(i => i.disabled = !on);
+  $$('#tmChips .chip').forEach(c => c.disabled = !on);
+}
+$('#tmToggle').addEventListener('click', () => {
+  if(tm.running){
+    tm.left = tm.endAt - Date.now(); tm.running = false;
+    $('#tmToggle').textContent = '继续'; $('#tmToggle').classList.add('primary');
+    $('#tmBig').classList.remove('done');
+  }else{
+    let total = tm.left > 0 ? tm.left : tmFromInputs();
+    if(total <= 0){ toast('请先设置时长'); return; }
+    tm.total = tm.left > 0 ? tm.total : total;
+    tm.endAt = Date.now() + total; tm.running = true;
+    $('#tmToggle').textContent = '暂停'; $('#tmToggle').classList.remove('primary');
+    setEditable(false);
+  }
+});
+$('#tmReset').addEventListener('click', () => {
+  tm.running = false; tm.left = 0; tm.total = 0;
+  $('#tmToggle').textContent = '开始'; $('#tmToggle').classList.add('primary');
+  setEditable(true); renderTM(tmFromInputs());
+  $('#tmBig').classList.remove('done'); $('#tmBar').style.width = '0%';
+});
+$$('#tmChips .chip').forEach(c => c.addEventListener('click', () => {
+  const min = +c.dataset.min;
+  $('#tmH').value = 0; $('#tmM').value = min; $('#tmS').value = 0;
+  $$('#tmChips .chip').forEach(x => x.classList.remove('on')); c.classList.add('on');
+  if(!tm.running) renderTM(tmFromInputs());
+}));
+['tmH','tmM','tmS'].forEach(id => $('#'+id).addEventListener('input', () => {
+  $$('#tmChips .chip').forEach(x => x.classList.remove('on'));
+  if(!tm.running) renderTM(tmFromInputs());
+}));
+function finishTM(){
+  tm.running = false;
+  $('#tmToggle').textContent = '开始'; $('#tmToggle').classList.add('primary');
+  setEditable(true); renderTM(0);
+  toast('⏰ 时间到！');
+  beep();
+  if(navigator.vibrate) navigator.vibrate([300,150,300,150,600]);
+}
+let ac = null;
+function beep(){
+  try{
+    ac = ac || new (window.AudioContext||window.webkitAudioContext)();
+    if(ac.state === 'suspended') ac.resume();
+    [0,.35,.7].forEach((t,i) => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'sine'; o.frequency.value = i === 2 ? 660 : 880;
+      o.connect(g); g.connect(ac.destination);
+      const s = ac.currentTime + t;
+      g.gain.setValueAtTime(0, s);
+      g.gain.linearRampToValueAtTime(.28, s + .02);
+      g.gain.exponentialRampToValueAtTime(.001, s + .28);
+      o.start(s); o.stop(s + .3);
+    });
+  }catch(e){}
+}
+
+/* ============ 面板切换（3D 翻牌） ============ */
+function go(name){
+  const cur = $('.face.active'), next = $('.face[data-face="'+name+'"]');
+  if(cur === next) return;
+  cur.classList.remove('active'); cur.classList.add('out');
+  setTimeout(() => cur.classList.remove('out'), 560);
+  next.classList.add('active');
+  $$('.tab').forEach(t => t.classList.toggle('on', t.dataset.go === name));
+  if(navigator.vibrate) navigator.vibrate(8);
+}
+$$('.tab').forEach(t => t.addEventListener('click', () => go(t.dataset.go)));
+
+/* ============ 设置面板 ============ */
+const sheet = $('#sheet'), mask = $('#mask');
+function openSheet(){ sheet.classList.add('show'); mask.classList.add('show'); }
+function closeSheet(){ sheet.classList.remove('show'); mask.classList.remove('show'); save(); }
+$('#setBtn').addEventListener('click', openSheet);
+mask.addEventListener('click', closeSheet);
+
+$$('#mats .mat').forEach(b => b.addEventListener('click', () => applyMat(b.dataset.mat)));
+
+const bind = (id, key, isNum) => {
+  const el = $('#'+id);
+  const h = () => { S[key] = isNum ? +el.value : el.value; apply(); syncVals(); save(); };
+  el.addEventListener('input', h); el.addEventListener('change', h);
+};
+function syncVals(){
+  $('#gColorVal').textContent = S.gc.toUpperCase();
+  $('#gAlphaVal').textContent = S.ga + '%';
+  $('#gBlurVal').textContent = S.blur + 'px';
+  $('#gSatVal').textContent = S.sat + '%';
+  $('#gNoiseVal').textContent = S.noise + '%';
+  $('#gRadiusVal').textContent = S.radius + 'px';
+  $('#tColorVal').textContent = S.tc.toUpperCase();
+  $('#aColorVal').textContent = S.ac.toUpperCase();
+  $('#fScaleVal').textContent = S.fs + '%';
+  $('#tiltVal').textContent = S.tilt + '%';
+  $('#depthVal').textContent = S.depth + '%';
+  $('#gSensVal').textContent = S.sens + '%';
+}
+bind('gColor','gc'); bind('gAlpha','ga',1); bind('gBlur','blur',1); bind('gSat','sat',1);
+bind('gNoise','noise',1); bind('gRadius','radius',1);
+bind('tColor','tc'); bind('aColor','ac'); bind('fScale','fs',1);
+bind('tiltAmt','tilt',1); bind('depthAmt','depth',1); bind('gSens','sens',1);
+$('#h24').addEventListener('change', e => { S.h24 = e.target.checked; save(); });
+$('#showSec').addEventListener('change', e => { S.showSec = e.target.checked; apply(); save(); });
+$('#gyroSw').addEventListener('change', e => { e.target.checked ? enableGyro() : disableGyro(); });
+$('#invSw').addEventListener('change', e => { S.inv = e.target.checked; save(); });
+$('#demoSw').addEventListener('change', e => { setDemo(e.target.checked); });
+$('#recalBtn').addEventListener('click', recalibrate);
+
+const bgs = $('#bgs');
+BGS.forEach((b,i) => {
+  const d = document.createElement('button');
+  d.className = 'bgdot';
+  d.style.background = 'linear-gradient(140deg,' + b.b1 + ',' + b.b2 + ')';
+  d.title = b.n;
+  d.addEventListener('click', () => { S.bg = i; apply(); syncUI(); save(); });
+  bgs.appendChild(d);
+});
+
+$('#randBtn').addEventListener('click', () => {
+  const rnd = () => '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6,'0');
+  S.gc = rnd(); S.ac = rnd(); S.tc = Math.random() > .5 ? '#ffffff' : '#0e1116';
+  S.bg = Math.floor(Math.random()*BGS.length);
+  apply(); syncUI(); save(); toast('已随机配色');
+});
+$('#resetBtn').addEventListener('click', () => {
+  Object.assign(S, DEFAULTS);
+  gyroOn && disableGyro();
+  apply(); syncUI(); save(); toast('已恢复默认');
+});
+
+let toastT;
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+/* ============ 初始化 ============ */
+apply(); syncUI(); renderSW(0); renderTM(tmFromInputs()); renderLaps();
+/* 预览器 / 桌面等无传感器环境：默认开启自动摆动，保证能看到 3D 效果 */
+(function(){
+  let inFrame = false; try{ inFrame = window.self !== window.top; }catch(e){ inFrame = true; }
+  const touch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  if(window.DeviceOrientationEvent && (inFrame || !touch)) setDemo(true);
+})();
+requestAnimationFrame(loop);
+document.addEventListener('dblclick', () => { if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); });
+})();
+</script>
+</body>
+</html>
